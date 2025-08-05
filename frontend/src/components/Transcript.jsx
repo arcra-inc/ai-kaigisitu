@@ -17,6 +17,14 @@ function Transcript({ transcript, setTranscript, meetingId, isRecording, setIsRe
 
       wsRef.current.onmessage = async (event) => {
         const data = JSON.parse(event.data)
+        if (data.error) {
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop()
+          }
+          setIsRecording(false)
+          alert(data.error)
+          return
+        }
         if (data.text) {
           const newTranscript = {
             id: Date.now(),
@@ -36,6 +44,19 @@ function Transcript({ transcript, setTranscript, meetingId, isRecording, setIsRe
             })
           })
         }
+      }
+      wsRef.current.onclose = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop()
+        }
+        setIsRecording(false)
+      }
+      wsRef.current.onerror = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop()
+        }
+        setIsRecording(false)
+        alert('音声認識サービスへの接続に失敗しました')
       }
 
       mediaRecorderRef.current.ondataavailable = (event) => {
@@ -85,7 +106,6 @@ function Transcript({ transcript, setTranscript, meetingId, isRecording, setIsRe
             <button
               onClick={isRecording ? stopRecording : startRecording}
               className={`btn ${isRecording ? 'danger' : 'success'}`}
-              disabled={isRecording}
             >
               {isRecording ? '🔴 録音中...' : '🎤 音声入力開始'}
             </button>

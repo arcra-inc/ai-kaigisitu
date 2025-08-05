@@ -222,6 +222,15 @@ async def export_meeting(meeting_id: int):
 @app.websocket("/ws/{meeting_id}")
 async def websocket_endpoint(websocket: WebSocket, meeting_id: int):
     await websocket.accept()
+
+    # Deepgram APIキー未設定時は接続せずエラーを通知
+    if not DEEPGRAM_API_KEY:
+        await websocket.send_text(
+            json.dumps({"error": "DEEPGRAM_API_KEYが設定されていません"})
+        )
+        await websocket.close(code=1011)
+        return
+
     dg_url = (
         "wss://api.deepgram.com/v1/listen?"
         "model=nova-3&language=ja&encoding=opus&sample_rate=48000"
@@ -230,7 +239,10 @@ async def websocket_endpoint(websocket: WebSocket, meeting_id: int):
     try:
         dg_ws = await websockets.connect(dg_url, extra_headers=dg_headers)
     except Exception:
-        await websocket.close()
+        await websocket.send_text(
+            json.dumps({"error": "Deepgramへの接続に失敗しました"})
+        )
+        await websocket.close(code=1011)
         return
 
     async def receive_from_deepgram():
