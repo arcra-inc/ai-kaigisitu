@@ -6,12 +6,10 @@ import json
 import os
 from datetime import datetime
 import sqlite3
-import asyncio
-import websockets
 from dotenv import load_dotenv
 import openai
 from openai import OpenAI
-from services.asr_service import transcribe_audio as dg_transcribe_audio
+from services.asr_service import transcribe_audio as asr_transcribe_audio
 
 load_dotenv()
 
@@ -28,7 +26,6 @@ app.add_middleware(
 
 # OpenAI設定
 openai.api_key = os.getenv("OPENAI_API_KEY")
-DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
 
 # Instantiate new-style OpenAI client (required for >=1.x of openai-python)
 client = OpenAI(api_key=openai.api_key)
@@ -64,7 +61,6 @@ def init_db():
             meeting_id INTEGER,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             text TEXT NOT NULL,
-            speaker TEXT DEFAULT 'Unknown',
             FOREIGN KEY (meeting_id) REFERENCES meetings (id)
         )
     ''')
@@ -116,7 +112,7 @@ async def create_meeting(data: dict):
 async def transcribe_audio(audio: UploadFile = File(...)):
     try:
         audio_content = await audio.read()
-        transcript_text = await dg_transcribe_audio(audio_content)
+        transcript_text = await asr_transcribe_audio(audio_content)
         return {"text": transcript_text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Transcription error: {str(e)}")
@@ -127,8 +123,8 @@ async def add_transcript(data: dict):
     cursor = conn.cursor()
     
     cursor.execute(
-        "INSERT INTO transcripts (meeting_id, text, speaker) VALUES (?, ?, ?)",
-        (data['meeting_id'], data['text'], data.get('speaker', 'Unknown'))
+        "INSERT INTO transcripts (meeting_id, text) VALUES (?, ?)",
+        (data['meeting_id'], data['text'])
     )
     
     conn.commit()
@@ -187,7 +183,7 @@ async def export_meeting(meeting_id: int):
     meeting = cursor.fetchone()
     
     # 議事録取得
-    cursor.execute("SELECT timestamp, speaker, text FROM transcripts WHERE meeting_id = ? ORDER BY timestamp", (meeting_id,))
+    cursor.execute("SELECT timestamp, text FROM transcripts WHERE meeting_id = ? ORDER BY timestamp", (meeting_id,))
     transcripts = cursor.fetchall()
     
     # 要約取得
@@ -206,8 +202,8 @@ async def export_meeting(meeting_id: int):
 ## 議事録
 """
     
-    for timestamp, speaker, text in transcripts:
-        markdown += f"**[{timestamp}] {speaker}:** {text}\n\n"
+    for timestamp, text in transcripts:
+        markdown += f"**[{timestamp}]** {text}\n\n"
     
     if summary:
         markdown += f"\n## 要約・アクションアイテム\n{summary[0]}\n"
@@ -222,66 +218,13 @@ async def export_meeting(meeting_id: int):
 @app.websocket("/ws/{meeting_id}")
 async def websocket_endpoint(websocket: WebSocket, meeting_id: int):
     await websocket.accept()
-
-    # Deepgram APIキー未設定時は接続せずエラーを通知
-    if not DEEPGRAM_API_KEY:
-        await websocket.send_text(
-            json.dumps({"error": "DEEPGRAM_API_KEYが設定されていません"})
-        )
-        await websocket.close(code=1011)
-        return
-
-    dg_url = (
-        "wss://api.deepgram.com/v1/listen?"
-        "model=nova-3&language=ja&encoding=opus&sample_rate=48000"
-    )
-    dg_headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
-    try:
-        dg_ws = await websockets.connect(dg_url, extra_headers=dg_headers)
-    except Exception:
-        await websocket.send_text(
-            json.dumps({"error": "Deepgramへの接続に失敗しました"})
-        )
-        await websocket.close(code=1011)
-        return
-
-    async def receive_from_deepgram():
-        try:
-            async for message in dg_ws:
-                data = json.loads(message)
-                if data.get("type") == "Results":
-                    transcript = data["channel"]["alternatives"][0]["transcript"]
-                    if transcript:
-                        await websocket.send_text(json.dumps({"text": transcript}))
-                        conn = sqlite3.connect('data/database.db')
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            "INSERT INTO transcripts (meeting_id, text, speaker) VALUES (?, ?, ?)",
-                            (meeting_id, transcript, 'Unknown')
-                        )
-                        conn.commit()
-                        conn.close()
-        except Exception:
-            pass
-
-    receive_task = asyncio.create_task(receive_from_deepgram())
     try:
         while True:
-            audio_chunk = await websocket.receive_bytes()
-            await dg_ws.send(audio_chunk)
+            data = await websocket.receive_text()
+            # ここでリアルタイム処理（今回は簡略化）
+            await websocket.send_text(f"Echo: {data}")
     except WebSocketDisconnect:
         pass
-    finally:
-        try:
-            await dg_ws.send(json.dumps({"type": "CloseStream"}))
-        except Exception:
-            pass
-        await dg_ws.close()
-        receive_task.cancel()
-        try:
-            await receive_task
-        except asyncio.CancelledError:
-            pass
 
 # 静的ファイル配信（本番用）
 app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="static")

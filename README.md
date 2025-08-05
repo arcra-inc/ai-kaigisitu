@@ -6,7 +6,7 @@
 
 - 📝 **アジェンダ管理**: 手動で議題・時間を設定
 - ⏰ **タイムマネジメント**: 議題毎のカウントダウンタイマー
-- 🎤 **音声認識**: Deepgram Nova-3 によるリアルタイム文字起こし
+- 🎤 **音声認識**: OpenAI Whisper による文字起こし
 - 📋 **要約生成**: GPT-4 による会議要約・アクションアイテム抽出
 - 📥 **エクスポート**: Markdown 形式でダウンロード
 
@@ -16,7 +16,7 @@
 ```bash
 # API キーを設定
 cp .env.example .env
-# .env ファイルを編集して OPENAI_API_KEY と DEEPGRAM_API_KEY を設定
+# .env ファイルを編集して OPENAI_API_KEY を設定
 ```
 
 ### 2. 起動
@@ -47,7 +47,7 @@ cd backend && pip install -r requirements.txt && uvicorn main:app --reload
 
 - **Frontend**: React + Vite
 - **Backend**: FastAPI + SQLite
-- **AI**: Deepgram Nova-3 + GPT-4
+- **AI**: OpenAI Whisper + GPT-4
 - **Deployment**: Docker Compose
 
 ## 📁 プロジェクト構造
@@ -63,7 +63,7 @@ ai-meeting-mvp/
 ## ⚠️ 制限事項（MVP版）
 
 - 認証機能なし（開発用）
-- 話者識別なし（「Unknown」で記録）
+- 話者識別なし
 - データは再起動で消失可能性
 - エラーハンドリング最小限
 
@@ -81,7 +81,7 @@ ai-meeting-mvp/
 - HTTPS または localhost でアクセス
 
 **音声認識が失敗する**
-- Deepgram API キーが正しく設定されているか確認
+- OpenAI API キーが正しく設定されているか確認
 - インターネット接続を確認
 
 **Docker起動エラー**

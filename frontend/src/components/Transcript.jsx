@@ -3,70 +3,68 @@ import { useState, useRef, useEffect } from 'react'
 function Transcript({ transcript, setTranscript, meetingId, isRecording, setIsRecording }) {
   const [isSupported, setIsSupported] = useState(false)
   const mediaRecorderRef = useRef(null)
-  const wsRef = useRef(null)
+  const chunksRef = useRef([])
 
   useEffect(() => {
-    setIsSupported(typeof window !== 'undefined' && 'MediaRecorder' in window)
+    setIsSupported('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)
   }, [])
 
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
-      wsRef.current = new WebSocket(`${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/${meetingId}`)
-
-      wsRef.current.onmessage = async (event) => {
-        const data = JSON.parse(event.data)
-        if (data.error) {
-          if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-            mediaRecorderRef.current.stop()
-          }
-          setIsRecording(false)
-          alert(data.error)
-          return
-        }
-        if (data.text) {
-          const newTranscript = {
-            id: Date.now(),
-            timestamp: new Date().toLocaleTimeString(),
-            text: data.text,
-            speaker: 'Unknown'
-          }
-          setTranscript(prev => [...prev, newTranscript])
-
-          await fetch('/api/transcript', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              meeting_id: meetingId,
-              text: data.text,
-              speaker: 'Unknown'
-            })
-          })
-        }
-      }
-      wsRef.current.onclose = () => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-          mediaRecorderRef.current.stop()
-        }
-        setIsRecording(false)
-      }
-      wsRef.current.onerror = () => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-          mediaRecorderRef.current.stop()
-        }
-        setIsRecording(false)
-        alert('音声認識サービスへの接続に失敗しました')
-      }
+      mediaRecorderRef.current = new MediaRecorder(stream)
+      chunksRef.current = []
 
       mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(event.data)
+        if (event.data.size > 0) {
+          chunksRef.current.push(event.data)
         }
       }
 
-      mediaRecorderRef.current.start(250)
+      mediaRecorderRef.current.onstop = async () => {
+        const audioBlob = new Blob(chunksRef.current, { type: 'audio/wav' })
+        const formData = new FormData()
+        formData.append('audio', audioBlob, 'recording.wav')
+
+        try {
+          const response = await fetch('/api/transcribe', {
+            method: 'POST',
+            body: formData
+          })
+          const result = await response.json()
+
+          if (result.text) {
+            const newTranscript = {
+              id: Date.now(),
+              timestamp: new Date().toLocaleTimeString(),
+              text: result.text
+            }
+            setTranscript(prev => [...prev, newTranscript])
+
+            await fetch('/api/transcript', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                meeting_id: meetingId,
+                text: result.text
+              })
+            })
+          }
+        } catch (error) {
+          console.error('音声認識エラー:', error)
+        }
+      }
+
+      mediaRecorderRef.current.start()
       setIsRecording(true)
+
+      setTimeout(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          mediaRecorderRef.current.stop()
+          setIsRecording(false)
+        }
+      }, 5000)
+
     } catch (error) {
       console.error('マイクアクセスエラー:', error)
       alert('マイクへのアクセスが拒否されました')
@@ -74,13 +72,10 @@ function Transcript({ transcript, setTranscript, meetingId, isRecording, setIsRe
   }
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop()
+      setIsRecording(false)
     }
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.close()
-    }
-    setIsRecording(false)
   }
 
   const addManualText = () => {
@@ -89,8 +84,7 @@ function Transcript({ transcript, setTranscript, meetingId, isRecording, setIsRe
       const newTranscript = {
         id: Date.now(),
         timestamp: new Date().toLocaleTimeString(),
-        text: text,
-        speaker: 'Manual'
+        text: text
       }
       setTranscript(prev => [...prev, newTranscript])
     }
@@ -106,6 +100,7 @@ function Transcript({ transcript, setTranscript, meetingId, isRecording, setIsRe
             <button
               onClick={isRecording ? stopRecording : startRecording}
               className={`btn ${isRecording ? 'danger' : 'success'}`}
+              disabled={isRecording}
             >
               {isRecording ? '🔴 録音中...' : '🎤 音声入力開始'}
             </button>
@@ -131,7 +126,7 @@ function Transcript({ transcript, setTranscript, meetingId, isRecording, setIsRe
         ) : (
           transcript.map((item) => (
             <div key={item.id} className="transcript-item">
-              <strong>[{item.timestamp}] {item.speaker}:</strong> {item.text}
+              <strong>[{item.timestamp}]</strong> {item.text}
             </div>
           ))
         )}

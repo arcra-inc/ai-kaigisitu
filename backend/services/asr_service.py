@@ -1,26 +1,21 @@
 import os
-import httpx
+import io
+from openai import AsyncOpenAI
 
-DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 async def transcribe_audio(audio_data: bytes) -> str:
-    """音声データをDeepgramでテキストに変換"""
+    """音声データをOpenAI Whisperでテキストに変換"""
     try:
-        headers = {
-            "Authorization": f"Token {DEEPGRAM_API_KEY}",
-            "Content-Type": "audio/wav",
-        }
-        params = {"model": "nova-3", "language": "ja"}
-        async with httpx.AsyncClient(timeout=None) as client:
-            resp = await client.post(
-                "https://api.deepgram.com/v1/listen",
-                headers=headers,
-                params=params,
-                content=audio_data,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data["results"]["channels"][0]["alternatives"][0]["transcript"]
+        audio_file = io.BytesIO(audio_data)
+        audio_file.name = "audio.wav"
+        transcript = await client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file,
+            language="ja",
+        )
+        return transcript.text
     except Exception as e:
         return f"[音声認識エラー: {str(e)}]"
 
