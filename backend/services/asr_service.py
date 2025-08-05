@@ -1,28 +1,26 @@
-import openai
 import os
-from typing import IO
-import tempfile
+import httpx
+
+DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
 
 async def transcribe_audio(audio_data: bytes) -> str:
-    """音声データをテキストに変換"""
+    """音声データをDeepgramでテキストに変換"""
     try:
-        # 一時ファイルに保存
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
-            temp_file.write(audio_data)
-            temp_path = temp_file.name
-        
-        # Whisper API で文字起こし
-        with open(temp_path, 'rb') as audio_file:
-            transcript = openai.Audio.transcribe(
-                model="whisper-1",
-                file=audio_file,
-                language="ja"
+        headers = {
+            "Authorization": f"Token {DEEPGRAM_API_KEY}",
+            "Content-Type": "audio/wav",
+        }
+        params = {"model": "nova-3", "language": "ja"}
+        async with httpx.AsyncClient(timeout=None) as client:
+            resp = await client.post(
+                "https://api.deepgram.com/v1/listen",
+                headers=headers,
+                params=params,
+                content=audio_data,
             )
-        
-        # 一時ファイル削除
-        os.unlink(temp_path)
-        
-        return transcript.text
-    
+            resp.raise_for_status()
+            data = resp.json()
+            return data["results"]["channels"][0]["alternatives"][0]["transcript"]
     except Exception as e:
         return f"[音声認識エラー: {str(e)}]"
+

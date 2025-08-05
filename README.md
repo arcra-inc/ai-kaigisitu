@@ -6,7 +6,7 @@
 
 - 📝 **アジェンダ管理**: 手動で議題・時間を設定
 - ⏰ **タイムマネジメント**: 議題毎のカウントダウンタイマー
-- 🎤 **音声認識**: Whisper API による自動文字起こし
+- 🎤 **音声認識**: Deepgram Nova-3 によるリアルタイム文字起こし
 - 📋 **要約生成**: GPT-4 による会議要約・アクションアイテム抽出
 - 📥 **エクスポート**: Markdown 形式でダウンロード
 
@@ -14,9 +14,9 @@
 
 ### 1. 環境設定
 ```bash
-# OpenAI API キーを設定
+# API キーを設定
 cp .env.example .env
-# .env ファイルを編集して OPENAI_API_KEY を設定
+# .env ファイルを編集して OPENAI_API_KEY と DEEPGRAM_API_KEY を設定
 ```
 
 ### 2. 起動
@@ -37,7 +37,7 @@ cd backend && pip install -r requirements.txt && uvicorn main:app --reload
 
 1. **会議作成**: タイトルと議題を入力して「会議を開始」
 2. **議事録作成**: 
-   - 🎤「音声入力開始」でマイク録音（5秒間）
+   - 🎤「音声入力開始」でマイク録音（リアルタイム認識）
    - ✏️「手動追加」でテキスト入力
 3. **時間管理**: 各議題の残り時間を表示、超過時は赤色警告
 4. **会議終了**: 「会議を終了」で AI が要約・アクション抽出
@@ -47,7 +47,7 @@ cd backend && pip install -r requirements.txt && uvicorn main:app --reload
 
 - **Frontend**: React + Vite
 - **Backend**: FastAPI + SQLite
-- **AI**: OpenAI Whisper + GPT-4
+- **AI**: Deepgram Nova-3 + GPT-4
 - **Deployment**: Docker Compose
 
 ## 📁 プロジェクト構造
@@ -81,7 +81,7 @@ ai-meeting-mvp/
 - HTTPS または localhost でアクセス
 
 **音声認識が失敗する**
-- OpenAI API キーが正しく設定されているか確認
+- Deepgram API キーが正しく設定されているか確認
 - インターネット接続を確認
 
 **Docker起動エラー**

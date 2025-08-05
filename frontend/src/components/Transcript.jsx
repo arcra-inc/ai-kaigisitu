@@ -3,72 +3,49 @@ import { useState, useRef, useEffect } from 'react'
 function Transcript({ transcript, setTranscript, meetingId, isRecording, setIsRecording }) {
   const [isSupported, setIsSupported] = useState(false)
   const mediaRecorderRef = useRef(null)
-  const chunksRef = useRef([])
+  const wsRef = useRef(null)
 
   useEffect(() => {
-    setIsSupported('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)
+    setIsSupported(typeof window !== 'undefined' && 'MediaRecorder' in window)
   }, [])
 
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      mediaRecorderRef.current = new MediaRecorder(stream)
-      chunksRef.current = []
+      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+      wsRef.current = new WebSocket(`${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/${meetingId}`)
+
+      wsRef.current.onmessage = async (event) => {
+        const data = JSON.parse(event.data)
+        if (data.text) {
+          const newTranscript = {
+            id: Date.now(),
+            timestamp: new Date().toLocaleTimeString(),
+            text: data.text,
+            speaker: 'Unknown'
+          }
+          setTranscript(prev => [...prev, newTranscript])
+
+          await fetch('/api/transcript', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              meeting_id: meetingId,
+              text: data.text,
+              speaker: 'Unknown'
+            })
+          })
+        }
+      }
 
       mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data)
+        if (event.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(event.data)
         }
       }
 
-      mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(chunksRef.current, { type: 'audio/wav' })
-        const formData = new FormData()
-        formData.append('audio', audioBlob, 'recording.wav')
-
-        try {
-          const response = await fetch('/api/transcribe', {
-            method: 'POST',
-            body: formData
-          })
-          const result = await response.json()
-          
-          if (result.text) {
-            const newTranscript = {
-              id: Date.now(),
-              timestamp: new Date().toLocaleTimeString(),
-              text: result.text,
-              speaker: 'Unknown'
-            }
-            setTranscript(prev => [...prev, newTranscript])
-            
-            // DB保存
-            await fetch('/api/transcript', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                meeting_id: meetingId,
-                text: result.text,
-                speaker: 'Unknown'
-              })
-            })
-          }
-        } catch (error) {
-          console.error('音声認識エラー:', error)
-        }
-      }
-
-      mediaRecorderRef.current.start()
+      mediaRecorderRef.current.start(250)
       setIsRecording(true)
-      
-      // 5秒間録音
-      setTimeout(() => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-          mediaRecorderRef.current.stop()
-          setIsRecording(false)
-        }
-      }, 5000)
-
     } catch (error) {
       console.error('マイクアクセスエラー:', error)
       alert('マイクへのアクセスが拒否されました')
@@ -76,10 +53,13 @@ function Transcript({ transcript, setTranscript, meetingId, isRecording, setIsRe
   }
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop()
-      setIsRecording(false)
     }
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.close()
+    }
+    setIsRecording(false)
   }
 
   const addManualText = () => {
@@ -98,11 +78,11 @@ function Transcript({ transcript, setTranscript, meetingId, isRecording, setIsRe
   return (
     <div className="transcript-section">
       <h3>📝 議事録</h3>
-      
+
       <div style={{ marginBottom: '20px' }}>
         {isSupported ? (
           <>
-            <button 
+            <button
               onClick={isRecording ? stopRecording : startRecording}
               className={`btn ${isRecording ? 'danger' : 'success'}`}
               disabled={isRecording}
@@ -141,3 +121,4 @@ function Transcript({ transcript, setTranscript, meetingId, isRecording, setIsRe
 }
 
 export default Transcript
+
