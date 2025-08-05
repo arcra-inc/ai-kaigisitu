@@ -88,6 +88,10 @@ ai-meeting-mvp/
 - Docker Desktop が起動しているか確認
 - ポート 3000, 8000 が使用されていないか確認
 
+## 🌐 デプロイ
+
+インターネット上でサービスを公開する手順は [docs/deployment.md](docs/deployment.md) を参照してください。
+
 ## 📞 サポート
 
 質問・バグ報告は Issues までお願いします。
