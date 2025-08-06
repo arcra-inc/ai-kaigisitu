@@ -4,16 +4,27 @@ function Transcript({ transcript, setTranscript, meetingId, isRecording, setIsRe
   const [isSupported, setIsSupported] = useState(false)
   const mediaRecorderRef = useRef(null)
   const chunksRef = useRef([])
+  const isRecordingRef = useRef(false)
+  const timeoutRef = useRef(null)
 
   useEffect(() => {
     setIsSupported('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)
   }, [])
+
+  const scheduleStop = () => {
+    timeoutRef.current = setTimeout(() => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop()
+      }
+    }, 5000)
+  }
 
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       mediaRecorderRef.current = new MediaRecorder(stream)
       chunksRef.current = []
+      isRecordingRef.current = true
 
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -53,17 +64,16 @@ function Transcript({ transcript, setTranscript, meetingId, isRecording, setIsRe
         } catch (error) {
           console.error('音声認識エラー:', error)
         }
+        if (isRecordingRef.current) {
+          chunksRef.current = []
+          mediaRecorderRef.current.start()
+          scheduleStop()
+        }
       }
 
       mediaRecorderRef.current.start()
       setIsRecording(true)
-
-      setTimeout(() => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-          mediaRecorderRef.current.stop()
-          setIsRecording(false)
-        }
-      }, 5000)
+      scheduleStop()
 
     } catch (error) {
       console.error('マイクアクセスエラー:', error)
@@ -72,10 +82,12 @@ function Transcript({ transcript, setTranscript, meetingId, isRecording, setIsRe
   }
 
   const stopRecording = () => {
+    isRecordingRef.current = false
+    clearTimeout(timeoutRef.current)
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop()
-      setIsRecording(false)
     }
+    setIsRecording(false)
   }
 
   const addManualText = () => {
