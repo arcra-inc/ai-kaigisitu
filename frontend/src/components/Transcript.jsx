@@ -109,13 +109,12 @@ function Transcript({ transcript, setTranscript, meetingId, isRecording, setIsRe
       <div style={{ marginBottom: '20px' }}>
         {isSupported ? (
           <>
-            <button
-              onClick={isRecording ? stopRecording : startRecording}
-              className={`btn ${isRecording ? 'danger' : 'success'}`}
-              disabled={isRecording}
-            >
-              {isRecording ? '🔴 録音中...' : '🎤 音声入力開始'}
-            </button>
+              <button
+                onClick={isRecording ? stopRecording : startRecording}
+                className={`btn ${isRecording ? 'danger' : 'success'}`}
+              >
+                {isRecording ? '⏹️ 録音停止' : '🎤 音声入力開始'}
+              </button>
             <button onClick={addManualText} className="btn">
               ✏️ 手動追加
             </button>
